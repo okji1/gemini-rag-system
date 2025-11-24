@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # File Search Store 설정
-FILE_SEARCH_STORE_NAME = "fileSearchStores/medicaldevicecertifications-79gkubw770rd"
+FILE_SEARCH_STORE_NAME = " "
 
 def delete_file_search_store():
     """
