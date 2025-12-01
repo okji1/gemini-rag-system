@@ -139,9 +139,6 @@ def step2_search_similar_documents(user_files, classification_info):
         file_search_store_names=[FILE_SEARCH_STORE_NAME]
     )
     
-    # TODO: 향후 filter API 지원 시 활성화
-    # if target_code and target_grade:
-    #     print(f"   🔍 필터 적용 예정: 등급={target_grade}, 품목코드={target_code}")
 
     search_prompt = f"""
 제공된 제품 문서를 기반으로, File Search Store에서 유사한 기허가 문서를 찾아주세요.
@@ -190,8 +187,6 @@ def step3_generate_draft(user_files, classification_info, similar_docs):
     file_search_config = types.FileSearch(
         file_search_store_names=[FILE_SEARCH_STORE_NAME]
     )
-    
-    # TODO: filter API 지원 시 활성화
 
     generation_prompt = f"""
 당신은 '도큐메딕(Documedix)' AI 솔루션입니다.
