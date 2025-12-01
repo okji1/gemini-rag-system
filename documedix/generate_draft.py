@@ -11,6 +11,32 @@ load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY")
 FILE_SEARCH_STORE_NAME = ""
 
+# --- 품목 항목 정의 ---
+DOCUMENT_CATEGORIES = [
+    "모양및구조-작용원리",
+    "모양및구조-외형",
+    "모양및구조-치수",
+    "모양및구조-특성",
+    "원재료",
+    "사용목적",
+    "성능",
+    "사용방법",
+    "사용시주의사항"
+]
+
+# 품목 항목별 키워드 매핑
+CATEGORY_KEYWORDS = {
+    "모양및구조-작용원리": ["작용원리", "작동원리", "동작원리"],
+    "모양및구조-외형": ["외형", "외관", "형상"],
+    "모양및구조-치수": ["치수", "크기", "규격", "사이즈"],
+    "모양및구조-특성": ["특성", "특징"],
+    "원재료": ["원재료", "재질", "소재", "material"],
+    "사용목적": ["사용목적", "용도", "목적"],
+    "성능": ["성능", "기능", "사양"],
+    "사용방법": ["사용방법", "사용법", "사용절차"],
+    "사용시주의사항": ["주의사항", "경고", "주의", "금기사항"]
+}
+
 # 분석할 새 제품의 기술 문서 파일 경로 목록
 INPUT_FILE_PATHS = [
 ]
@@ -18,6 +44,58 @@ INPUT_FILE_PATHS = [
 client = genai.Client(api_key=API_KEY)
 
 # --- 헬퍼 함수 ---
+
+def classify_file_by_category(file_path):
+    """
+    파일 경로나 이름을 분석하여 어떤 품목 항목에 해당하는지 판별합니다.
+    
+    Args:
+        file_path: 분석할 파일의 경로
+    
+    Returns:
+        해당하는 품목 항목 문자열, 판별 불가시 None
+    """
+    file_name = os.path.basename(file_path)
+    
+    # 각 카테고리별 키워드 검사
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in file_name:
+                return category
+    
+    return None
+
+
+def group_files_by_category(file_paths):
+    """
+    여러 파일들을 품목 항목별로 그룹화합니다.
+    
+    Args:
+        file_paths: 파일 경로 리스트
+    
+    Returns:
+        {품목항목: [파일경로, ...]} 형태의 딕셔너리
+    """
+    grouped = {category: [] for category in DOCUMENT_CATEGORIES}
+    unclassified = []
+    
+    for path in file_paths:
+        category = classify_file_by_category(path)
+        if category:
+            grouped[category].append(path)
+        else:
+            unclassified.append(path)
+    
+    if unclassified:
+        print(f"   ⚠️ 분류되지 않은 파일: {len(unclassified)}개")
+        for path in unclassified:
+            print(f"      - {os.path.basename(path)}")
+    
+    # 빈 카테고리 제거
+    grouped = {k: v for k, v in grouped.items() if v}
+    
+    return grouped
+
 
 def upload_temp_file(path):
     """분석용 임시 파일 업로드 (한글 처리 포함)"""
@@ -124,23 +202,59 @@ def step1_identify_classification(user_files):
         return {"classification_code": None, "grade": None, "item_name": None, "reason": "오류 발생"}
 
 
-def step2_search_similar_documents(user_files, classification_info):
+def step2_search_similar_documents(user_files, classification_info, category=None):
     """
     2단계: 확정된 품목 코드를 필터로 사용하여 
     가장 유사한 기허가 문서를 검색합니다.
+    
+    Args:
+        user_files: 업로드된 사용자 파일 리스트
+        classification_info: 1단계에서 분석된 품목 분류 정보
+        category: 특정 품목 항목 (예: '모양및구조-작용원리'), None이면 전체 검색
+    
+    Returns:
+        검색된 문서의 요약 텍스트
     """
     target_code = classification_info.get("classification_code")
     target_grade = classification_info.get("grade")
     
-    print(f"\n🔎 [2단계] [{target_code}] 관련 합격 사례 검색 중...")
+    category_text = f" [{category}]" if category else ""
+    print(f"\n🔎 [2단계]{category_text} [{target_code}] 관련 합격 사례 검색 중...")
 
     # File Search 설정 (현재 SDK는 filter 미지원)
     file_search_config = types.FileSearch(
         file_search_store_names=[FILE_SEARCH_STORE_NAME]
     )
     
+    # TODO: 향후 filter API 지원 시 활성화
+    # if target_code and target_grade and category:
+    #     file_search_config.filter = {
+    #         "classification_code": target_code,
+    #         "grade": target_grade,
+    #         "category": category
+    #     }
 
-    search_prompt = f"""
+    # 품목 항목별 맞춤 검색 프롬프트
+    if category:
+        search_prompt = f"""
+제공된 제품 문서를 기반으로, File Search Store에서 '{category}' 항목에 해당하는 유사한 기허가 문서를 찾아주세요.
+
+**중요: 다음 조건에 정확히 일치하는 문서만 검색하세요:**
+- 품목코드: {target_code}
+- 등급: {target_grade}등급
+- 항목: {category}
+
+**찾아야 할 내용:**
+1. 품목코드 '{target_code}'의 '{category}' 관련 기술문서
+2. 해당 항목에 대한 식약처 작성 가이드라인
+3. 합격한 사례의 문서 구조와 표현 방식
+
+**주의:** 다른 품목코드, 등급, 또는 항목의 문서는 참조하지 마세요.
+
+검색된 문서의 주요 내용을 요약해주세요.
+"""
+    else:
+        search_prompt = f"""
 제공된 제품 문서를 기반으로, File Search Store에서 유사한 기허가 문서를 찾아주세요.
 
 **중요: 다음 조건에 정확히 일치하는 문서만 검색하세요:**
@@ -173,22 +287,84 @@ def step2_search_similar_documents(user_files, classification_info):
         return ""
 
 
-def step3_generate_draft(user_files, classification_info, similar_docs):
+def step3_generate_draft(user_files, classification_info, similar_docs, category=None):
     """
     3단계: 검색된 합격 사례를 참조하여 
     의료기기 제조 허가 신청서의 기술문서 초안을 작성합니다.
+    
+    Args:
+        user_files: 업로드된 사용자 파일 리스트
+        classification_info: 1단계에서 분석된 품목 분류 정보
+        similar_docs: 2단계에서 검색된 유사 문서 요약
+        category: 특정 품목 항목, None이면 전체 문서 생성
+    
+    Returns:
+        생성된 기술문서 초안 텍스트
     """
     target_code = classification_info.get("classification_code")
     item_name = classification_info.get("item_name", "의료기기")
     
-    print(f"\n✍️ [3단계] 기술문서 초안 생성 중...")
+    category_text = f" [{category}]" if category else ""
+    print(f"\n✍️ [3단계]{category_text} 기술문서 초안 생성 중...")
 
     # File Search 설정
     file_search_config = types.FileSearch(
         file_search_store_names=[FILE_SEARCH_STORE_NAME]
     )
+    
+    # TODO: filter API 지원 시 활성화
+    # if target_code and category:
+    #     file_search_config.filter = {
+    #         "classification_code": target_code,
+    #         "category": category
+    #     }
 
-    generation_prompt = f"""
+    # 품목 항목별 맞춤 생성 프롬프트
+    if category:
+        # 품목 항목별 한국어 제목 매핑
+        category_titles = {
+            "모양및구조-작용원리": "작용원리",
+            "모양및구조-외형": "외형",
+            "모양및구조-치수": "치수",
+            "모양및구조-특성": "특성",
+            "원재료": "원재료",
+            "사용목적": "사용목적",
+            "성능": "성능",
+            "사용방법": "사용방법",
+            "사용시주의사항": "사용 시 주의사항"
+        }
+        
+        section_title = category_titles.get(category, category)
+        
+        generation_prompt = f"""
+당신은 '도큐메딕(Documedix)' AI 솔루션입니다.
+
+**[임무]**
+사용자의 제품 파일을 바탕으로 '의료기기 제조 허가 신청서'의 '{section_title}' 항목을 작성하세요.
+
+**[참조 지침]**
+1. File Search를 통해 품목코드 '{target_code}' ({item_name})의 '{category}' 항목에 해당하는 기존 합격 문서들의 스타일과 용어를 정확히 모방하세요.
+2. 식약처 고시나 가이드라인 문서가 검색되면 해당 작성 지침을 반드시 준수하세요.
+3. 기존 합격 사례의 문장 구조, 전문 용어, 표현 방식을 참고하세요.
+4. 사용자가 제공한 제품 정보를 최대한 반영하되, 누락된 정보는 합격 사례를 참고하여 보완하세요.
+
+**[검색된 유사 문서 정보]**
+{similar_docs[:1000]}...
+
+**[출력 형식]**
+Markdown 형식으로 작성하세요.
+
+---
+
+## {section_title}
+
+(작성 내용)
+
+---
+"""
+    else:
+        # 전체 문서 생성
+        generation_prompt = f"""
 당신은 '도큐메딕(Documedix)' AI 솔루션입니다.
 
 **[임무]**
@@ -261,7 +437,14 @@ def main():
         print("❌ 오류: 분석할 파일이 지정되지 않았습니다.")
         return
 
-    # 0. 사용자 파일 업로드
+    # 0. 파일을 품목 항목별로 그룹화
+    print("\n📂 파일 분류 중...")
+    grouped_files = group_files_by_category(INPUT_FILE_PATHS)
+    print(f"   ✅ {len(grouped_files)}개 항목으로 분류됨")
+    for category, files in grouped_files.items():
+        print(f"      - {category}: {len(files)}개 파일")
+
+    # 1. 사용자 파일 업로드
     uploaded_files = []
     temp_paths = []
     
@@ -280,22 +463,52 @@ def main():
         return
 
     try:
-        # 1단계: 품목 분류 분석
+        # 2. 품목 분류 분석 (1단계)
         cls_info = step1_identify_classification(uploaded_files)
         
-        # 2단계: 유사 문서 검색
-        similar_docs = step2_search_similar_documents(uploaded_files, cls_info)
+        # 3. 품목별 문서 생성
+        category_drafts = {}
         
-        # 3단계: 초안 생성
-        draft = step3_generate_draft(uploaded_files, cls_info, similar_docs)
+        for category, file_paths in grouped_files.items():
+            # 해당 카테고리의 파일만 필터링
+            category_uploaded_files = [
+                uf for uf in uploaded_files 
+                if any(fp in [p for p in file_paths] for fp in INPUT_FILE_PATHS)
+            ]
+            
+            if not category_uploaded_files:
+                continue
+            
+            # 2단계: 해당 품목 항목의 유사 문서 검색
+            similar_docs = step2_search_similar_documents(
+                category_uploaded_files, 
+                cls_info, 
+                category=category
+            )
+            
+            # 3단계: 해당 품목 항목의 초안 생성
+            draft = step3_generate_draft(
+                category_uploaded_files, 
+                cls_info, 
+                similar_docs,
+                category=category
+            )
+            
+            category_drafts[category] = draft
         
-        # 결과 출력
+        # 4. 결과 통합 및 출력
         print("\n" + "="*60)
         print("📄 생성된 기술문서 초안")
         print("="*60)
-        print(draft)
         
-        # 결과를 파일로 저장
+        combined_draft = ""
+        for category in DOCUMENT_CATEGORIES:
+            if category in category_drafts:
+                combined_draft += f"\n{category_drafts[category]}\n"
+        
+        print(combined_draft)
+        
+        # 5. 결과를 파일로 저장
         output_path = os.path.join(os.path.dirname(__file__), "generated_draft.md")
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(f"# 품목 분류 정보\n\n")
@@ -304,12 +517,20 @@ def main():
             f.write(f"- 품목명: {cls_info.get('item_name')}\n")
             f.write(f"- 근거: {cls_info.get('reason')}\n\n")
             f.write("---\n\n")
-            f.write(draft)
+            f.write("# 품목별 생성 결과\n\n")
+            
+            for category in DOCUMENT_CATEGORIES:
+                if category in category_drafts:
+                    f.write(f"\n## [{category}]\n\n")
+                    f.write(category_drafts[category])
+                    f.write("\n\n---\n")
         
         print(f"\n💾 초안이 저장되었습니다: {output_path}")
         
     except Exception as e:
         print(f"\n❌ 처리 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
         
     finally:
         # 정리
