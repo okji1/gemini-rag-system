@@ -1,18 +1,18 @@
-# 🤖 도큐메딕스 (Documedix)
+# 도큐메딕스 (Documedix)
 
 > **AI 기반 의료기기 인허가 문서 자동 생성 및 RAG 검색 시스템**
 > 본 프로젝트는 복잡한 의료기기 제조 허가 신청서 작성 과정을 자동화하기 위해, 15만 건의 승인 문서 데이터를 기반으로 한 **RAG(Retrieval-Augmented Generation)** 솔루션입니다.
 
 ---
 
-## 📺 Demo & Preview
+## Demo & Preview
 
 <img width="1238" height="654" alt="스크린샷 2025-12-22 오후 11 09 18" src="https://github.com/user-attachments/assets/75aeefe4-f31d-47d0-9afa-c0f667cd6660" />
 
 
 ---
 
-## 🚀 주요 기능
+## 주요 기능
 
 * **AI 초안 자동 생성**: 15만 건의 전문 문서를 참조하여 작용원리, 외형, 성능 등 9개 카테고리의 문서 초안을 생성합니다.
 * **RAG 기반 정밀 검색**: Gemini File Search Store를 활용하여 사용자 입력과 가장 유사한 과거 승인 데이터를 실시간으로 참조합니다.
@@ -21,7 +21,7 @@
 
 ---
 
-## 🏗️ 시스템 아키텍처
+## 시스템 아키텍처
 
 ```mermaid
 graph TD
@@ -36,7 +36,7 @@ graph TD
 
 ---
 
-## 🛠 기술 스택
+## 기술 스택
 
 ### Frontend
 
@@ -56,7 +56,7 @@ graph TD
 
 ---
 
-## 🔥 트러블슈팅 및 인사이트
+## 트러블슈팅 및 인사이트
 
 ### 1. CUDA 충돌 이슈와 아키텍처 전환
 
@@ -72,7 +72,7 @@ graph TD
 
 ---
 
-## 📂 프로젝트 구조
+## 프로젝트 구조
 
 ```bash
 src/
